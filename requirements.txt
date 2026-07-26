@@ -1,1 +1,7 @@
-
+streamlit
+openai
+ollama
+duckduckgo-search
+pillow
+pymupdf
+python-docx
