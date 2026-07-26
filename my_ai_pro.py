@@ -267,11 +267,11 @@ with st.sidebar:
     # --- Provider & Model ---
     provider = st.radio(
         "AI Brain",
-        ["OpenAI API", "Local Ollama (Free)"],
-        index=0 if st.session_state.model_provider == "openai" else 1,
-        help="OpenAI for smarts, Ollama for privacy and zero cost"
+        ["OpenAI API", "Groq API (Free & Fast)", "Local Ollama (Free)"],
+        index={"openai": 0, "groq": 1, "ollama": 2}.get(st.session_state.model_provider, 0),
+        help="OpenAI = smartest (paid). Groq = free cloud AI, works 24/7. Ollama = local, private, needs your PC on."
     )
-    st.session_state.model_provider = "openai" if "OpenAI" in provider else "ollama"
+    st.session_state.model_provider = {"OpenAI API": "openai", "Groq API (Free & Fast)": "groq", "Local Ollama (Free)": "ollama"}.get(provider, "openai")
 
     if st.session_state.model_provider == "openai":
         model = st.selectbox("Model", ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"], index=0)
@@ -280,7 +280,7 @@ with st.sidebar:
         st.caption(f"💳 Est. cost: ~${estimate_cost(model, 2000, 500):.4f} per chat")
     else:
         model = st.selectbox("Local Model", 
-                            ["qwen3:32b", "llama3.2", "llama3.1", "mistral", "codellama", "phi3", "llava"], 
+                            ["llama3.1", "llama3.2-vision", "mistral", "codellama", "phi3", "llava"], 
                             index=0)
         api_key = None
         if not HAS_OLLAMA:
@@ -445,7 +445,7 @@ with st.sidebar:
         )
 
     # Total cost display
-    if st.session_state.model_provider == "openai" and st.session_state.total_cost > 0:
+    if st.session_state.model_provider in ("openai",) and st.session_state.total_cost > 0:
         st.markdown(f"<div style='text-align:center; margin-top:10px;'>Total spent: <span class='cost-pill'>${st.session_state.total_cost:.4f}</span></div>", 
                    unsafe_allow_html=True)
 
@@ -618,12 +618,16 @@ if st.session_state.pending_response and st.session_state.messages:
                 history.append({"role": "user", "content": user_prompt})
 
             # Streaming response
-            if st.session_state.model_provider == "openai":
+            if st.session_state.model_provider in ("openai", "groq"):
                 if not api_key:
-                    st.error("🔑 Please enter your OpenAI API key in the sidebar!")
+                    label = "OpenAI" if st.session_state.model_provider == "openai" else "Groq"
+                    st.error(f"🔑 Please enter your {label} API key in the sidebar!")
                     st.stop()
 
-                client = openai.OpenAI(api_key=api_key)
+                if st.session_state.model_provider == "groq":
+                    client = openai.OpenAI(api_key=api_key, base_url="https://api.groq.com/openai/v1")
+                else:
+                    client = openai.OpenAI(api_key=api_key)
 
                 # Estimate input tokens (rough)
                 input_text = " ".join([m.get("content", "") if isinstance(m.get("content"), str) else str(m.get("content", "")) for m in history])
@@ -645,9 +649,10 @@ if st.session_state.pending_response and st.session_state.messages:
                         output_tokens += 1
                         message_placeholder.markdown(full_response + "▌")
 
-                # Update cost
-                cost = estimate_cost(model, int(input_tokens), output_tokens)
-                st.session_state.total_cost += cost
+                # Update cost (Groq is free, OpenAI is tracked)
+                if st.session_state.model_provider == "openai":
+                    cost = estimate_cost(model, int(input_tokens), output_tokens)
+                    st.session_state.total_cost += cost
 
             else:  # Ollama
                 if not HAS_OLLAMA:
